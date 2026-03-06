@@ -140,7 +140,8 @@ V3F QuadControl::RollPitchControl(V3F accelCmd, Quaternion<float> attitude, floa
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
   // Aceleracion de empuje total
   float acc = -collThrustCmd / mass;
-  // Desired rotation matrix elements
+  if (collThrustCmd < 0.001f) { acc = -0.001f / mass; }
+  // Elementos de la matriz R
   float R33 = R(2, 2);
   float R21 = R(1, 0);
   float R11 = R(0, 0);
@@ -148,10 +149,14 @@ V3F QuadControl::RollPitchControl(V3F accelCmd, Quaternion<float> attitude, floa
   float R12 = R(0, 1);
   float b_x_a = R(0, 2);
   float b_y_a = R(1, 2);
-  float b_x_c = accelCmd.x / acc;
-  float b_y_c = accelCmd.y / acc;
+
+  // Elementos deseados (con constrain)
+  float b_x_c = CONSTRAIN(accelCmd.x / acc, -maxTiltAngle, maxTiltAngle);
+  float b_y_c = CONSTRAIN(accelCmd.y / acc, -maxTiltAngle, maxTiltAngle);
+
   float b_dot_x_c = kpBank * (b_x_c - b_x_a);
   float b_dot_y_c = kpBank * (b_y_c - b_y_a);
+
   pqrCmd.x = (R21 * b_dot_x_c - R11 * b_dot_y_c) / R33;
   pqrCmd.y = (R22 * b_dot_x_c - R12 * b_dot_y_c) / R33;
   /////////////////////////////// END STUDENT CODE ////////////////////////////
@@ -186,10 +191,19 @@ float QuadControl::AltitudeControl(float posZCmd, float velZCmd, float posZ, flo
   float b_z = R(2, 2);
   float z_error = posZCmd - posZ;
   float z_error_dot = velZCmd - velZ;
+
+  // 1. ACUMULAR EL ERROR INTEGRAL
+  integratedAltitudeError += z_error * dt;
+
   float p_term = kpPosZ * z_error;
   float d_term = kpVelZ * z_error_dot;
-  float u_1_bar = p_term + d_term + accelZCmd;
+  // 2. SUMAR EL TERMINO INTEGRAL (KiPosZ)
+  float i_term = KiPosZ * integratedAltitudeError;
+
+  float u_1_bar = p_term + d_term + i_term + accelZCmd;
+
   float c = (9.81f - u_1_bar) / b_z;
+
   thrust = mass * CONSTRAIN(c, -maxDescentRate / dt, maxAscentRate / dt);
   /////////////////////////////// END STUDENT CODE ////////////////////////////
   
