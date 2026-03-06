@@ -70,10 +70,15 @@ VehicleCommand QuadControl::GenerateMotorCommands(float collThrustCmd, V3F momen
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
 
-  cmd.desiredThrustsN[0] = mass * 9.81f / 4.f; // front left
-  cmd.desiredThrustsN[1] = mass * 9.81f / 4.f; // front right
-  cmd.desiredThrustsN[2] = mass * 9.81f / 4.f; // rear left
-  cmd.desiredThrustsN[3] = mass * 9.81f / 4.f; // rear right
+  //cmd.desiredThrustsN[0] = mass * 9.81f / 4.f; // front left
+  //cmd.desiredThrustsN[1] = mass * 9.81f / 4.f; // front right
+  //cmd.desiredThrustsN[2] = mass * 9.81f / 4.f; // rear left
+  //cmd.desiredThrustsN[3] = mass * 9.81f / 4.f; // rear right
+
+  cmd.desiredThrustsN[0] = (collThrustCmd + momentCmd.x / (L / sqrt(2.f)) + momentCmd.y / (L / sqrt(2.f)) - momentCmd.z / kappa) / 4; // front left
+  cmd.desiredThrustsN[1] = (collThrustCmd - momentCmd.x / (L / sqrt(2.f)) + momentCmd.y / (L / sqrt(2.f)) + momentCmd.z / kappa) / 4; // front right
+  cmd.desiredThrustsN[2] = (collThrustCmd + momentCmd.x / (L / sqrt(2.f)) - momentCmd.y / (L / sqrt(2.f)) + momentCmd.z / kappa) / 4; // rear left
+  cmd.desiredThrustsN[3] = (collThrustCmd - momentCmd.x / (L / sqrt(2.f)) - momentCmd.y / (L / sqrt(2.f)) - momentCmd.z / kappa) / 4; // rear right
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
@@ -97,8 +102,13 @@ V3F QuadControl::BodyRateControl(V3F pqrCmd, V3F pqr)
   V3F momentCmd;
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
+  // 1. Calculate the momens of inertia for each axis
+  V3F I(Ixx, Iyy, Izz);
+  // 2. Calculate the error between desired and actual body rates
+  V3F error = pqrCmd - pqr;
+  // 3. Aplicate the proportional gain to the error and multiply by the moments of inertia to get the desired moments
+  momentCmd = kpPQR * error * I;
 
-  
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
@@ -128,9 +138,22 @@ V3F QuadControl::RollPitchControl(V3F accelCmd, Quaternion<float> attitude, floa
   Mat3x3F R = attitude.RotationMatrix_IwrtB();
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-
-
-
+  // Aceleracion de empuje total
+  float acc = -collThrustCmd / mass;
+  // Desired rotation matrix elements
+  float R33 = R(2, 2);
+  float R21 = R(1, 0);
+  float R11 = R(0, 0);
+  float R22 = R(1, 1);
+  float R12 = R(0, 1);
+  float b_x_a = R(0, 2);
+  float b_y_a = R(1, 2);
+  float b_x_c = accelCmd.x / acc;
+  float b_y_c = accelCmd.y / acc;
+  float b_dot_x_c = kpBank * (b_x_c - b_x_a);
+  float b_dot_y_c = kpBank * (b_y_c - b_y_a);
+  pqrCmd.x = (R21 * b_dot_x_c - R11 * b_dot_y_c) / R33;
+  pqrCmd.y = (R22 * b_dot_x_c - R12 * b_dot_y_c) / R33;
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   return pqrCmd;
@@ -160,9 +183,14 @@ float QuadControl::AltitudeControl(float posZCmd, float velZCmd, float posZ, flo
   float thrust = 0;
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-
-
-
+  float b_z = R(2, 2);
+  float z_error = posZCmd - posZ;
+  float z_error_dot = velZCmd - velZ;
+  float p_term = kpPosZ * z_error;
+  float d_term = kpVelZ * z_error_dot;
+  float u_1_bar = p_term + d_term + accelZCmd;
+  float c = (9.81f - u_1_bar) / b_z;
+  thrust = mass * CONSTRAIN(c, -maxDescentRate / dt, maxAscentRate / dt);
   /////////////////////////////// END STUDENT CODE ////////////////////////////
   
   return thrust;
@@ -198,7 +226,25 @@ V3F QuadControl::LateralPositionControl(V3F posCmd, V3F velCmd, V3F pos, V3F vel
   V3F accelCmd = accelCmdFF;
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
+  // Limitar la velocidad deseada antes de usarla
+  velCmd.x = CONSTRAIN(velCmd.x, -maxSpeedXY, maxSpeedXY);
+  velCmd.y = CONSTRAIN(velCmd.y, -maxSpeedXY, maxSpeedXY);
 
+  float x_error = posCmd.x - pos.x;
+  float x_error_dot = velCmd.x - vel.x;
+  float p_term_x = kpPosXY * x_error;
+  float d_term_x = kpVelXY * x_error_dot;
+  accelCmd.x += p_term_x + d_term_x;
+  
+  accelCmd.x = CONSTRAIN(accelCmd.x, -maxAccelXY, maxAccelXY);
+  
+  float y_error = posCmd.y - pos.y;
+  float y_error_dot = velCmd.y - vel.y;
+  float p_term_y = kpPosXY * y_error;
+  float d_term_y = kpVelXY * y_error_dot;
+  accelCmd.y += p_term_y + d_term_y;
+
+  accelCmd.y = CONSTRAIN(accelCmd.y, -maxAccelXY, maxAccelXY);
   
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
