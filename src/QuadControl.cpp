@@ -189,6 +189,7 @@ float QuadControl::AltitudeControl(float posZCmd, float velZCmd, float posZ, flo
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
   float b_z = R(2, 2);
+  velZCmd = CONSTRAIN(velZCmd, -maxAscentRate, maxDescentRate);
   float z_error = posZCmd - posZ;
   float z_error_dot = velZCmd - velZ;
 
@@ -202,9 +203,9 @@ float QuadControl::AltitudeControl(float posZCmd, float velZCmd, float posZ, flo
 
   float u_1_bar = p_term + d_term + i_term + accelZCmd;
 
-  float c = (9.81f - u_1_bar) / b_z;
+  float u1 = (9.81f - u_1_bar) / b_z;
 
-  thrust = mass * CONSTRAIN(c, -maxDescentRate / dt, maxAscentRate / dt);
+  thrust = mass * u1;
   /////////////////////////////// END STUDENT CODE ////////////////////////////
   
   return thrust;
